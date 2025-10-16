@@ -35,7 +35,7 @@ This project crawls GitHub repositories using the **GraphQL API** to collect sta
 
 - **Does not fetch 100k+ repositories yet:**  
   - Due to GitHub API and rate limits, each partition fetches up to 1,000 repositories.  
-  - With 10 partitions × 1,000 per partition, the database currently contains ~10,000 repositories.  
+  - With 10 partitions × 1,000 per partition, the database currently contains ~10k to 15k repositories.  
 
 ---
 
