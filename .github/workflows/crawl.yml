@@ -1,0 +1,79 @@
+name: Crawl GitHub Stars (demo)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=2s
+          --health-retries=5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+        env:
+          CI: true
+
+      - name: Wait for Postgres to be ready
+        run: |
+          for i in $(seq 1 20); do
+            pg_isready -h localhost -p 5432 -U postgres && break
+            sleep 1
+          done
+
+      - name: Run crawler (Node)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        run: |
+          node crawler.js
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+
+      - name: Dump DB to CSV
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -c "\copy (SELECT github_id, full_name, html_url, stars, crawled_at FROM repos) TO 'repos.csv' CSV HEADER"
+          psql -h localhost -U postgres -d postgres -c "\copy (SELECT github_id, recorded_at, stars FROM repo_stars_history ORDER BY recorded_at DESC LIMIT 10000) TO 'stars_history.csv' CSV HEADER"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: github-crawl-results
+          path: |
+            repos.csv
+            stars_history.csv
