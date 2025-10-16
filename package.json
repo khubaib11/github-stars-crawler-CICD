@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "This project uses the GitHub GraphQL API to crawl repository star counts and store them in PostgreSQL.",
   "main": "crawler.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
