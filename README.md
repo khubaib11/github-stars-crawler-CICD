@@ -1,34 +1,89 @@
-# GitHub Stars Crawler
 
-This project uses the GitHub GraphQL API to crawl repository star counts and store them in PostgreSQL.
+# GitHub Stars Crawler (GraphQL Version)
+
+This project crawls GitHub repositories using the **GraphQL API** to collect star counts and stores the data in PostgreSQL. It also generates a CSV file of crawled repositories.
+
+---
+
+## Features Implemented ✅
+
+- **Repository crawling:**  
+  `crawler.js` fetches repositories from GitHub GraphQL API based on **10 star count partitions**.
+
+- **PostgreSQL storage:**  
+  - Stores repository information in the `repos` table:
+    - `github_id` (primary key)  
+    - `full_name`  
+    - `html_url`  
+    - `stars`  
+    - `crawled_at` timestamp  
+  - Removes previous data before inserting new results.  
+  - Handles duplicates using `ON CONFLICT DO UPDATE`.
+
+- **CSV export:**  
+  - After crawling, `repos.csv` is generated with all repository data.  
+  - CSV can be uploaded as an artifact in GitHub Actions.
+
+- **GitHub Actions integration:**  
+  - Workflow (`crawl.yml`) runs the crawler on **push to main** only.  
+  - Safely commits updated CSV to the repository without causing infinite loops.  
+  - Uploads a backup artifact for each run.
+
+---
+
+## Limitations / Not Accomplished ❌
+
+- **Does not fetch 100k+ repositories yet:**  
+  - Due to GitHub API and rate limits, each partition fetches up to 1,000 repositories.  
+  - With 10 partitions × 1,000 per partition, the database currently contains ~10,000 repositories.  
+
+---
 
 ## How It Works
-1. `crawler.js` fetches repositories using GitHub's GraphQL API.
-2. Data (id, full_name, stars) is saved into a Postgres database.
-3. `repo_stars_history` stores daily star snapshots.
-4. The workflow (`crawl.yml`) runs the process automatically via GitHub Actions.
 
-## Scalability
-- For 500 million repos, partition data collection by creation date or star range (e.g., crawl smaller segments in parallel).
-- Use message queues (e.g., RabbitMQ) to distribute crawling tasks.
-- Add caching or incremental updates to only refresh changed repos.
+1. **Partitioned crawling:**  
+   - The crawler fetches repositories in **10 star count partitions**.  
+   - Each partition fetches repositories with `first=100` per GraphQL page, up to a max of 1,000 per partition.
 
-## Schema Evolution
-To store metadata like issues, pull requests, and comments:
-- Add new related tables (e.g., `issues`, `pull_requests`).
-- Use foreign keys referencing `repos.github_id`.
-- Use `ON CONFLICT DO UPDATE` to efficiently refresh changed records.
+2. **GraphQL API:**  
+   - Uses GitHub GraphQL API with pagination cursors.  
+   - Can be extended to fetch nested metadata in future updates.
 
+3. **Data storage:**  
+   - Previous data is cleared before inserting new results.  
+   - Duplicate GitHub IDs update existing records with the latest star count.
 
-## 🚀 Future Work
+4. **CSV generation:**  
+   - After crawling, `repos.csv` is generated with all repositories.  
+   - CSV is committed back to the repo and uploaded as an artifact.
 
-If we scale to 500M repositories:
-- Use **distributed databases** (like CockroachDB or TimescaleDB).
-- Partition data by stars or creation date for faster queries.
-- Implement **incremental crawling** (only update changed repos).
-- Use **parallel jobs in GitHub Actions** to crawl multiple partitions.
-- Add metadata tables for:
-  - `issues`, `pull_requests`, `comments`, `reviews`, `commits`, `ci_checks`
-- To handle updates (like new comments on a PR):
-  - Store each entity (e.g., `issue_id`, `comment_id`) with a `last_seen_at` timestamp.
-  - On re-crawl, only update changed rows — this keeps updates efficient.
+5. **Workflow safety:**  
+   - Commits only happen if the crawler changes the CSV.  
+   - Workflow ignores `repos.csv` pushes to prevent infinite loops.
+
+---
+
+## Schema Evolution (Planned)
+
+- Add new tables for metadata: `issues`, `pull_requests`, `comments`, `reviews`, `commits`.  
+- Use foreign keys referencing `repos.github_id`.  
+- Store `last_seen_at` timestamps to update only changed rows.  
+- Use `ON CONFLICT DO UPDATE` for efficient refreshes.
+
+---
+
+## Scalability (Future Work)
+
+- **For 500M repositories:**  
+  - Partition queries by star count and creation date to fetch subsets.  
+  - Use message queues (RabbitMQ/Kafka) to distribute crawling tasks.  
+  - Implement caching or incremental updates for only changed repositories.  
+  - Use distributed databases like **CockroachDB** or **TimescaleDB**.  
+  - Implement parallel jobs in GitHub Actions for faster partition crawling.  
+
+- **Metadata crawling:**  
+  - Fetch and store additional repository metadata (issues, PRs, commits, CI checks).  
+  - Only update changed entities to reduce database writes.
+
+---
+

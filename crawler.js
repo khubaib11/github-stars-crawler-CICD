@@ -12,13 +12,13 @@ const client = new Client({
   database: process.env.POSTGRES_DB || "postgres",
 });
 
-// 🔹 Generate ~100 partitions for 0–100000+ stars
+// 🔹 Generate 10 partitions for 10–100000+ stars
 function generatePartitions() {
   const partitions = [];
   let lower = 10;
-  let step = Math.floor((100000 - lower) / 100); // ~999 per partition
+  let step = Math.floor((100000 - lower) / 10); // 10 partitions
 
-  for (let i = 0; i < 99; i++) {
+  for (let i = 0; i < 10; i++) {
     const upper = lower + step;
     partitions.push(`stars:${lower}..${upper}`);
     lower = upper + 1;
@@ -27,28 +27,62 @@ function generatePartitions() {
   return partitions;
 }
 
-async function crawlPartition(query, total = 1000) {
-  const perPage = 100;
-  const pages = Math.ceil(total / perPage);
+// 🔹 GraphQL query builder
+function buildQuery(starQuery, cursor = null) {
+  return {
+    query: `
+      query ($queryString: String!, $after: String) {
+        search(query: $queryString, type: REPOSITORY, first: 100, after: $after) {
+          repositoryCount
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            ... on Repository {
+              id
+              nameWithOwner
+              url
+              stargazerCount
+            }
+          }
+        }
+      }
+    `,
+    variables: {
+      queryString: starQuery,
+      after: cursor,
+    },
+  };
+}
 
-  for (let page = 1; page <= pages; page++) {
-    const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(
-      query
-    )}&sort=stars&order=desc&per_page=${perPage}&page=${page}`;
+// 🔹 Crawl a single partition
+async function crawlPartition(query, maxRepos = 1000) {
+  let cursor = null;
+  let totalFetched = 0;
 
-    const headers = { "User-Agent": "github-stars-crawler" };
-    if (process.env.GITHUB_TOKEN)
-      headers.Authorization = `token ${process.env.GITHUB_TOKEN}`;
+  do {
+    const body = buildQuery(query, cursor);
+    const res = await fetch("https://api.github.com/graphql", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "User-Agent": "github-graphql-crawler",
+        Authorization: `bearer ${process.env.GITHUB_TOKEN}`,
+      },
+      body: JSON.stringify(body),
+    });
 
-    const res = await fetch(url, { headers });
     const data = await res.json();
 
-    if (!data.items) {
+    if (!data.data || !data.data.search) {
       console.error("⚠️ GitHub API Error:", data);
       break;
     }
 
-    for (const repo of data.items) {
+    const nodes = data.data.search.nodes;
+
+    for (const repo of nodes) {
       await client.query(
         `INSERT INTO repos (github_id, full_name, html_url, stars, crawled_at)
          VALUES ($1, $2, $3, $4, NOW())
@@ -56,18 +90,26 @@ async function crawlPartition(query, total = 1000) {
            stars = EXCLUDED.stars,
            crawled_at = NOW(),
            html_url = EXCLUDED.html_url`,
-        [repo.id.toString(), repo.full_name, repo.html_url, repo.stargazers_count]
+        [repo.id, repo.nameWithOwner, repo.url, repo.stargazerCount]
       );
+      totalFetched++;
+      if (totalFetched >= maxRepos) break;
     }
 
-    console.log(`✅ Page ${page}/${pages} done for query: ${query}`);
-    await new Promise((r) => setTimeout(r, 2000)); // avoid rate limit
-  }
+    cursor = data.data.search.pageInfo.endCursor;
+    const hasNextPage = data.data.search.pageInfo.hasNextPage;
 
-  console.log(`✅ Finished partition: ${query}`);
+    console.log(`✅ Fetched ${totalFetched} repos for partition: ${query}`);
+
+    if (!hasNextPage || totalFetched >= maxRepos) break;
+
+    await new Promise((r) => setTimeout(r, 2000)); // rate limit delay
+  } while (true);
+
+  console.log(`✅ Finished partition: ${query}, total fetched: ${totalFetched}`);
 }
 
-// 🔹 Export data to CSV file
+// 🔹 Export to CSV
 async function exportToCSV() {
   const { rows } = await client.query(
     "SELECT github_id, full_name, html_url, stars, crawled_at FROM repos ORDER BY stars DESC"
@@ -75,13 +117,7 @@ async function exportToCSV() {
   const header = "github_id,full_name,html_url,stars,crawled_at\n";
   const data = rows
     .map((r) =>
-      [
-        r.github_id,
-        r.full_name,
-        r.html_url,
-        r.stars,
-        r.crawled_at.toISOString(),
-      ].join(",")
+      [r.github_id, r.full_name, r.html_url, r.stars, r.crawled_at.toISOString()].join(",")
     )
     .join("\n");
 
