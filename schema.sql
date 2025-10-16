@@ -1,8 +1,8 @@
-
--- schema.sql (minimal)
+-- schema.sql (updated with html_url)
 CREATE TABLE IF NOT EXISTS repos (
-  github_id TEXT PRIMARY KEY,      -- GraphQL node id (string)
-  full_name TEXT NOT NULL,         -- owner/name
+  github_id TEXT PRIMARY KEY,            -- GitHub repo ID (string)
+  full_name TEXT NOT NULL,               -- owner/name
+  html_url TEXT,                         -- ✅ repo link
   stars INTEGER NOT NULL,
   crawled_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
