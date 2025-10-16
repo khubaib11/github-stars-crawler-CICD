@@ -1,0 +1,16 @@
+{
+  "name": "github-stars-crawler-cicd",
+  "version": "1.0.0",
+  "description": "This project uses the GitHub GraphQL API to crawl repository star counts and store them in PostgreSQL.",
+  "main": "crawler.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "pg": "^8.16.3"
+  }
+}
