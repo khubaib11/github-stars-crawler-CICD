@@ -18,3 +18,17 @@ To store metadata like issues, pull requests, and comments:
 - Add new related tables (e.g., `issues`, `pull_requests`).
 - Use foreign keys referencing `repos.github_id`.
 - Use `ON CONFLICT DO UPDATE` to efficiently refresh changed records.
+
+
+## 🚀 Future Work
+
+If we scale to 500M repositories:
+- Use **distributed databases** (like CockroachDB or TimescaleDB).
+- Partition data by stars or creation date for faster queries.
+- Implement **incremental crawling** (only update changed repos).
+- Use **parallel jobs in GitHub Actions** to crawl multiple partitions.
+- Add metadata tables for:
+  - `issues`, `pull_requests`, `comments`, `reviews`, `commits`, `ci_checks`
+- To handle updates (like new comments on a PR):
+  - Store each entity (e.g., `issue_id`, `comment_id`) with a `last_seen_at` timestamp.
+  - On re-crawl, only update changed rows — this keeps updates efficient.

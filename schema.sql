@@ -1,15 +1,7 @@
--- schema.sql (updated with html_url)
 CREATE TABLE IF NOT EXISTS repos (
-  github_id TEXT PRIMARY KEY,            -- GitHub repo ID (string)
-  full_name TEXT NOT NULL,               -- owner/name
-  html_url TEXT,                         -- ✅ repo link
-  stars INTEGER NOT NULL,
+  github_id TEXT PRIMARY KEY,       -- GitHub unique ID
+  full_name TEXT NOT NULL,          -- owner/repo
+  html_url TEXT NOT NULL,           -- repository link
+  stars INTEGER NOT NULL,           -- star count
   crawled_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS repo_stars_history (
-  github_id TEXT NOT NULL REFERENCES repos(github_id) ON DELETE CASCADE,
-  recorded_at DATE NOT NULL,
-  stars INTEGER NOT NULL,
-  PRIMARY KEY (github_id, recorded_at)
 );
