@@ -1,15 +1,17 @@
 name: Crawl GitHub Stars (demo)
 
 on:
-  workflow_dispatch:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'repos.csv' # prevents infinite loop when CSV is updated
 
 jobs:
   crawl:
+    if: github.actor != 'github-actions[bot]' # prevents bot retrigger
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # required to commit and push updates
 
     services:
       postgres:
@@ -29,6 +31,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,7 +75,16 @@ jobs:
         run: |
           psql -h localhost -U postgres -d postgres -c "\copy (SELECT github_id, full_name, html_url, stars, crawled_at FROM repos) TO 'repos.csv' CSV HEADER"
 
-      - name: Upload artifact
+      - name: Commit and push CSV to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add repos.csv
+          git diff --quiet && echo "No changes to commit" || (git commit -m "Update crawled repos data [skip ci]" && git push)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact (backup)
         uses: actions/upload-artifact@v4
         with:
           name: github-crawl-results
