@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+
     services:
       postgres:
         image: postgres:15
@@ -26,7 +27,7 @@ jobs:
           --health-retries=5
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
@@ -35,8 +36,7 @@ jobs:
           node-version: '18'
 
       - name: Install dependencies
-        run: |
-          npm ci
+        run: npm ci
         env:
           CI: true
 
@@ -46,6 +46,14 @@ jobs:
             pg_isready -h localhost -p 5432 -U postgres && break
             sleep 1
           done
+
+      - name: Setup Postgres schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+          psql -h localhost -U postgres -d postgres -f schema.sql
 
       - name: Run crawler (Node)
         env:
@@ -58,16 +66,11 @@ jobs:
         run: |
           node crawler.js
 
-      - name: Install psql client
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y postgresql-client
-
       - name: Dump DB to CSV
         env:
           PGPASSWORD: postgres
         run: |
-          psql -h localhost -U postgres -d postgres -c "\copy (SELECT github_id, full_name, html_url, stars, crawled_at FROM repos) TO 'repos.csv' CSV HEADER"
+          psql -h localhost -U postgres -d postgres -c "\copy (SELECT github_id, full_name, stars, crawled_at FROM repos) TO 'repos.csv' CSV HEADER"
           psql -h localhost -U postgres -d postgres -c "\copy (SELECT github_id, recorded_at, stars FROM repo_stars_history ORDER BY recorded_at DESC LIMIT 10000) TO 'stars_history.csv' CSV HEADER"
 
       - name: Upload artifacts
